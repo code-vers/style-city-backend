@@ -161,24 +161,34 @@ const calculateSystemMetrics = (entries: ApprovedDashboardEntry[]): DashboardOve
   let weeklyEarnings = 0;
   let weeklyServicesDone = 0;
   let weeklyTips = 0;
+  let grossRevenue = 0;
+  let netSalonProfit = 0;
 
   entries.forEach((entry) => {
     const entryTips = entry.tips ?? 0;
     const entryCommission = entry.commissionEarnings ?? 0;
-    const splitCommission = entry.splits.reduce(
-      (sum, split) => sum + (split.commissionEarnings ?? 0),
-      0
-    );
+    const splitCommission = entry.splits
+      .filter((split) => split.employeeId !== entry.employeeId)
+      .reduce((sum, split) => sum + (split.commissionEarnings ?? 0), 0);
 
     weeklyServicesDone += 1;
     weeklyTips += entryTips;
     weeklyEarnings += entryCommission + splitCommission + entryTips;
+
+    // Gross Revenue = Total Price + Tips
+    // The totalPrice in DB includes the base service fee + hair add-on cost
+    grossRevenue += entry.totalPrice + entryTips;
+
+    // Net Profit = Total Price - Employee Commissions
+    netSalonProfit += entry.totalPrice - entryCommission - splitCommission;
   });
 
   return {
     weeklyEarnings,
     weeklyServicesDone,
-    weeklyTips
+    weeklyTips,
+    grossRevenue,
+    netSalonProfit
   };
 };
 
