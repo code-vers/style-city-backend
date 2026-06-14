@@ -10,6 +10,8 @@ export interface DashboardOverviewMetrics {
   weeklyEarnings: number;
   weeklyServicesDone: number;
   weeklyTips: number;
+  grossRevenue?: number;
+  netSalonProfit?: number;
 }
 
 export interface DashboardOverviewRange {
