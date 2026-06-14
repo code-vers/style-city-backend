@@ -5,7 +5,9 @@ import { ReportService } from './report.service';
 const getWeeklyEmployeeEarnings = catchAsync(async (req: Request, res: Response) => {
   const result = await ReportService.getWeeklyEmployeeEarnings({
     startDate: req.query.startDate as string,
-    endDate: req.query.endDate as string
+    endDate: req.query.endDate as string,
+    employeeId: req.query.employeeId as string,
+    salonId: req.query.salonId as string
   });
   sendResponse(res, {
     statusCode: 200,
@@ -16,10 +18,11 @@ const getWeeklyEmployeeEarnings = catchAsync(async (req: Request, res: Response)
 });
 
 const getSalonRevenue = catchAsync(async (req: Request, res: Response) => {
-  console.log('DEBUG: Received request for salon revenue:', req.query);
   const result = await ReportService.getSalonRevenue({
     startDate: req.query.startDate as string,
-    endDate: req.query.endDate as string
+    endDate: req.query.endDate as string,
+    employeeId: req.query.employeeId as string,
+    salonId: req.query.salonId as string
   });
   sendResponse(res, {
     statusCode: 200,
@@ -32,7 +35,9 @@ const getSalonRevenue = catchAsync(async (req: Request, res: Response) => {
 const getTopServices = catchAsync(async (req: Request, res: Response) => {
   const result = await ReportService.getTopServices({
     startDate: req.query.startDate as string,
-    endDate: req.query.endDate as string
+    endDate: req.query.endDate as string,
+    employeeId: req.query.employeeId as string,
+    salonId: req.query.salonId as string
   });
   sendResponse(res, {
     statusCode: 200,

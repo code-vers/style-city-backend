@@ -2,14 +2,11 @@ import { Prisma } from '@prisma/client';
 import { format, startOfWeek, endOfWeek, subWeeks, addDays } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import prisma from '../../utils/prisma';
-import { WeeklyEarningsResponse } from './report.interface';
+import { WeeklyEarningsResponse, ReportFilterParams } from './report.interface';
 
 const TIMEZONE = 'America/Chicago';
 
-const getWeeklyEmployeeEarnings = async (filters: {
-  startDate?: string;
-  endDate?: string;
-}): Promise<WeeklyEarningsResponse> => {
+const getWeeklyEmployeeEarnings = async (filters: ReportFilterParams): Promise<WeeklyEarningsResponse> => {
   console.log('ReportService filters:', filters);
   const now = toZonedTime(new Date(), TIMEZONE);
 
@@ -31,22 +28,43 @@ const getWeeklyEmployeeEarnings = async (filters: {
   const prevStart = new Date(currentStart.getTime() - rangeDuration - 1);
   const prevEnd = new Date(currentStart.getTime() - 1);
 
+  const buildWhereClause = (start: Date, end: Date): Prisma.SalonEntryWhereInput => {
+    const where: Prisma.SalonEntryWhereInput = {
+      status: 'APPROVED',
+      createdAt: {
+        gte: start,
+        lte: end
+      }
+    };
+
+    if (filters.salonId) {
+      where.salonId = filters.salonId;
+    }
+
+    if (filters.employeeId) {
+      where.OR = [
+        { employeeId: filters.employeeId },
+        { splits: { some: { employeeId: filters.employeeId } } }
+      ];
+    }
+
+    return where;
+  };
+
   const fetchEarningsForRange = async (start: Date, end: Date) => {
     const entries = await prisma.salonEntry.findMany({
-      where: {
-        status: 'APPROVED',
-        createdAt: {
-          gte: start,
-          lte: end
-        }
-      },
+      where: buildWhereClause(start, end),
       select: {
         createdAt: true,
+        employeeId: true,
         commissionEarnings: true,
         tips: true,
+        isSplit: true,
         splits: {
           select: {
-            commissionEarnings: true
+            employeeId: true,
+            commissionEarnings: true,
+            tips: true
           }
         }
       }
@@ -61,13 +79,35 @@ const getWeeklyEmployeeEarnings = async (filters: {
 
   const calculateTotal = (entries: any[]) => {
     return entries.reduce((sum, entry) => {
-      const mainEarnings = entry.commissionEarnings || 0;
-      const tips = entry.tips || 0;
-      const splitEarnings = entry.splits.reduce(
-        (s: number, split: any) => s + (split.commissionEarnings || 0),
-        0
-      );
-      return sum + mainEarnings + tips + splitEarnings;
+      let entryTotal = 0;
+
+      if (filters.employeeId) {
+        if (entry.employeeId === filters.employeeId) {
+          const mainEarnings = entry.commissionEarnings || 0;
+          let ownTips = entry.tips || 0;
+
+          if (entry.isSplit && entry.splits.length > 0) {
+            const otherSplits = entry.splits.filter((s: any) => s.employeeId !== filters.employeeId);
+            const splitTipsSum = otherSplits.reduce((sumTips: number, split: any) => sumTips + (split.tips || 0), 0);
+            ownTips -= splitTipsSum;
+          }
+          entryTotal += mainEarnings + ownTips;
+        } else {
+          const userSplit = entry.splits.find((s: any) => s.employeeId === filters.employeeId);
+          if (userSplit) {
+            entryTotal += (userSplit.commissionEarnings || 0) + (userSplit.tips || 0);
+          }
+        }
+      } else {
+        const mainEarnings = entry.commissionEarnings || 0;
+        const tips = entry.tips || 0;
+        const splitEarnings = entry.splits
+          .filter((s: any) => s.employeeId !== entry.employeeId)
+          .reduce((s: number, split: any) => s + (split.commissionEarnings || 0), 0);
+        entryTotal += mainEarnings + tips + splitEarnings;
+      }
+
+      return sum + entryTotal;
     }, 0);
   };
 
@@ -106,10 +146,7 @@ const getWeeklyEmployeeEarnings = async (filters: {
   };
 };
 
-const getSalonRevenue = async (filters: {
-  startDate?: string;
-  endDate?: string;
-}) => {
+const getSalonRevenue = async (filters: ReportFilterParams) => {
   const now = toZonedTime(new Date(), TIMEZONE);
   const isFilterEmpty = !filters.startDate || !filters.endDate;
 
@@ -123,17 +160,31 @@ const getSalonRevenue = async (filters: {
     : endOfWeek(now, { weekStartsOn: 1 });
   currentEnd.setHours(23, 59, 59, 999);
 
+  const where: Prisma.SalonEntryWhereInput = {
+    status: 'APPROVED',
+    createdAt: {
+      gte: currentStart,
+      lte: currentEnd
+    }
+  };
+
+  if (filters.salonId) {
+    where.salonId = filters.salonId;
+  }
+
+  if (filters.employeeId) {
+    where.OR = [
+      { employeeId: filters.employeeId },
+      { splits: { some: { employeeId: filters.employeeId } } }
+    ];
+  }
+
   const entries = await prisma.salonEntry.findMany({
-    where: {
-      status: 'APPROVED',
-      createdAt: {
-        gte: currentStart,
-        lte: currentEnd
-      }
-    },
+    where,
     select: {
       createdAt: true,
-      actualPrice: true
+      totalPrice: true,
+      tips: true
     }
   });
 
@@ -149,7 +200,7 @@ const getSalonRevenue = async (filters: {
         const entryDate = toZonedTime(e.createdAt, TIMEZONE);
         return entryDate >= dayStart && entryDate <= dayEnd;
       })
-      .reduce((sum, e) => sum + e.actualPrice, 0);
+      .reduce((sum, e) => sum + e.totalPrice + (e.tips || 0), 0);
 
     return {
       day,
@@ -161,10 +212,7 @@ const getSalonRevenue = async (filters: {
   return data;
 };
 
-const getTopServices = async (filters: {
-  startDate?: string;
-  endDate?: string;
-}) => {
+const getTopServices = async (filters: ReportFilterParams) => {
   const now = toZonedTime(new Date(), TIMEZONE);
   const isFilterEmpty = !filters.startDate || !filters.endDate;
 
@@ -178,16 +226,29 @@ const getTopServices = async (filters: {
     : endOfWeek(now, { weekStartsOn: 1 });
   currentEnd.setHours(23, 59, 59, 999);
 
+  const where: Prisma.SalonEntryWhereInput = {
+    status: 'APPROVED',
+    createdAt: {
+      gte: currentStart,
+      lte: currentEnd
+    }
+  };
+
+  if (filters.salonId) {
+    where.salonId = filters.salonId;
+  }
+
+  if (filters.employeeId) {
+    where.OR = [
+      { employeeId: filters.employeeId },
+      { splits: { some: { employeeId: filters.employeeId } } }
+    ];
+  }
+
   // Group by serviceId
   const serviceStats = await prisma.salonEntry.groupBy({
     by: ['serviceId'],
-    where: {
-      status: 'APPROVED',
-      createdAt: {
-        gte: currentStart,
-        lte: currentEnd
-      }
-    },
+    where,
     _count: {
       serviceId: true
     },
