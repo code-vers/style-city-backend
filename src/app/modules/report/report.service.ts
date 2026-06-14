@@ -184,7 +184,14 @@ const getSalonRevenue = async (filters: ReportFilterParams) => {
     select: {
       createdAt: true,
       totalPrice: true,
-      tips: true
+      tips: true,
+      commissionEarnings: true,
+      isSplit: true,
+      splits: {
+        select: {
+          commissionEarnings: true
+        }
+      }
     }
   });
 
@@ -195,17 +202,29 @@ const getSalonRevenue = async (filters: ReportFilterParams) => {
     const dayEnd = new Date(dayStart);
     dayEnd.setHours(23, 59, 59, 999);
 
-    const dayRevenue = entries
-      .filter(e => {
-        const entryDate = toZonedTime(e.createdAt, TIMEZONE);
-        return entryDate >= dayStart && entryDate <= dayEnd;
-      })
-      .reduce((sum, e) => sum + e.totalPrice + (e.tips || 0), 0);
+    let dayRevenue = 0;
+    let dayProfit = 0;
+
+    entries.forEach(e => {
+      const entryDate = toZonedTime(e.createdAt, TIMEZONE);
+      if (entryDate >= dayStart && entryDate <= dayEnd) {
+        dayRevenue += e.totalPrice + (e.tips || 0);
+
+        let totalCommission = 0;
+        if (e.isSplit && e.splits.length > 0) {
+          totalCommission = e.splits.reduce((sum, split) => sum + (split.commissionEarnings || 0), 0);
+        } else {
+          totalCommission = e.commissionEarnings || 0;
+        }
+
+        dayProfit += e.totalPrice - totalCommission;
+      }
+    });
 
     return {
       day,
       revenue: Number(dayRevenue.toFixed(2)),
-      expenses: 0
+      profit: Number(dayProfit.toFixed(2))
     };
   });
 
