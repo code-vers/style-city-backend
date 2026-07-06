@@ -110,6 +110,8 @@ model SalonEntry {
   approvedBy         User?            @relation("ApprovedBy", fields: [approvedById], references: [id])
   editedById         String?
   editedBy           User?            @relation("EditedBy", fields: [editedById], references: [id])
+  mainIsPaid         Boolean          @default(false)
+  mainPaidAt         DateTime?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
@@ -127,6 +129,8 @@ model SplitEntry {
   commissionRate     Float?     @default(0)
   commissionEarnings Float?     @default(0)
   splitPercentage    Float?     @default(0)
+  isPaid             Boolean    @default(false)
+  paidAt             DateTime?
 
   @@map("split_entries")
 }
@@ -157,20 +161,20 @@ enum TaskStatus {
 }
 
 model Task {
-  id                    String      @id @default(uuid())
+  id                    String     @id @default(uuid())
   title                 String
-  description           String      @db.Text
-  status                TaskStatus  @default(PENDING)
+  description           String     @db.Text
+  status                TaskStatus @default(PENDING)
   assignedToId          String
-  assignedTo            User        @relation("AssignedTasks", fields: [assignedToId], references: [id])
+  assignedTo            User       @relation("AssignedTasks", fields: [assignedToId], references: [id])
   createdById           String
-  createdBy             User        @relation("CreatedTasks", fields: [createdById], references: [id])
+  createdBy             User       @relation("CreatedTasks", fields: [createdById], references: [id])
   completedById         String?
-  completedBy           User?       @relation("CompletedTasks", fields: [completedById], references: [id])
+  completedBy           User?      @relation("CompletedTasks", fields: [completedById], references: [id])
   completionRequestedAt DateTime?
   completedAt           DateTime?
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
 
   @@map("tasks")
 }

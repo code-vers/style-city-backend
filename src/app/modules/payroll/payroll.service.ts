@@ -110,6 +110,8 @@ const getAllPayroll = async (filters: IPayrollFilterParams) => {
     let serviceCharge = 0;
     let totalTips = 0;
     let commissionEarnings = 0;
+    let paidEarnings = 0;
+    let unpaidEarnings = 0;
 
     // Calculate metrics from entries
     entries.forEach(entry => {
@@ -122,7 +124,6 @@ const getAllPayroll = async (filters: IPayrollFilterParams) => {
         let ownTips = entry.tips || 0;
 
         if (entry.isSplit && entry.splits) {
-           // Only subtract splits belonging to OTHER employees
            const otherSplits = entry.splits.filter(s => s.employeeId !== user.id);
            const splitServiceSum = otherSplits.reduce((sum, s) => sum + s.totalPrice, 0);
            const splitTipsSum = otherSplits.reduce((sum, s) => sum + (s.tips || 0), 0);
@@ -135,6 +136,13 @@ const getAllPayroll = async (filters: IPayrollFilterParams) => {
         totalTips += ownTips;
         commissionEarnings += entry.commissionEarnings || 0;
 
+        const mainEarnings = (entry.commissionEarnings || 0) + ownTips;
+        if (entry.mainIsPaid) {
+          paidEarnings += mainEarnings;
+        } else {
+          unpaidEarnings += mainEarnings;
+        }
+
       } else if (entry.isSplit && entry.splits) {
         const userSplit = entry.splits.find(s => s.employeeId === user.id);
         if (userSplit) {
@@ -142,6 +150,13 @@ const getAllPayroll = async (filters: IPayrollFilterParams) => {
           serviceCharge += userSplit.totalPrice;
           totalTips += (userSplit.tips || 0);
           commissionEarnings += userSplit.commissionEarnings || 0;
+
+          const splitEarnings = (userSplit.commissionEarnings || 0) + (userSplit.tips || 0);
+          if (userSplit.isPaid) {
+            paidEarnings += splitEarnings;
+          } else {
+            unpaidEarnings += splitEarnings;
+          }
         }
       }
 
@@ -164,7 +179,9 @@ const getAllPayroll = async (filters: IPayrollFilterParams) => {
       serviceCharge,
       commissionEarnings,
       totalTips,
-      earnings
+      earnings,
+      paidEarnings,
+      unpaidEarnings
     };
   });
 
@@ -188,7 +205,59 @@ const getEmployeePayrollEntries = async (employeeId: string, filters: IPayrollFi
   );
 };
 
+const markEmployeePaid = async (
+  payload: { employeeId: string; startDate?: string; endDate?: string }
+) => {
+  return await prisma.$transaction(async (tx) => {
+    let dateFilter: any = {};
+    if (payload.startDate || payload.endDate) {
+      dateFilter.createdAt = {};
+      if (payload.startDate) {
+        dateFilter.createdAt.gte = fromZonedTime(`${payload.startDate}T00:00:00`, 'America/Chicago');
+      }
+      if (payload.endDate) {
+        dateFilter.createdAt.lte = fromZonedTime(`${payload.endDate}T23:59:59.999`, 'America/Chicago');
+      }
+    }
+
+    const mainUpdate = await tx.salonEntry.updateMany({
+      where: {
+        employeeId: payload.employeeId,
+        status: 'APPROVED',
+        mainIsPaid: false,
+        ...dateFilter
+      },
+      data: {
+        mainIsPaid: true,
+        mainPaidAt: new Date()
+      }
+    });
+
+    const splitUpdate = await tx.splitEntry.updateMany({
+      where: {
+        employeeId: payload.employeeId,
+        isPaid: false,
+        salonEntry: {
+          status: 'APPROVED',
+          ...dateFilter
+        }
+      },
+      data: {
+        isPaid: true,
+        paidAt: new Date()
+      }
+    });
+
+    return {
+      success: true,
+      updatedMainEntries: mainUpdate.count,
+      updatedSplitEntries: splitUpdate.count
+    };
+  });
+};
+
 export const PayrollService = {
   getAllPayroll,
-  getEmployeePayrollEntries
+  getEmployeePayrollEntries,
+  markEmployeePaid
 };

@@ -558,6 +558,11 @@ const updateSalonEntry = async (
     throw new AppError(404, 'Salon entry not found.');
   }
 
+  const hasPaidSplits = existingEntry.splits.some((s) => s.isPaid);
+  if (existingEntry.mainIsPaid || hasPaidSplits) {
+    throw new AppError(400, 'Cannot edit an entry where payment has already been processed.');
+  }
+
   const { splits, ...updateData } = payload;
 
   // Recalculate actualPrice if totalPrice or addHair is updated

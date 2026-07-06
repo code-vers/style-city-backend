@@ -35,7 +35,19 @@ const getEmployeePayrollEntries: RequestHandler = catchAsync(async (req, res) =>
   });
 });
 
+const markEmployeePaid: RequestHandler = catchAsync(async (req, res) => {
+  const result = await PayrollService.markEmployeePaid(req.body);
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Employee marked as paid successfully.',
+    data: result
+  });
+});
+
 export const PayrollController = {
   getAllPayroll,
-  getEmployeePayrollEntries
+  getEmployeePayrollEntries,
+  markEmployeePaid
 };

@@ -16,4 +16,10 @@ router.get(
   PayrollController.getEmployeePayrollEntries
 );
 
+router.post(
+  '/mark-paid',
+  auth('ADMIN', 'MANAGER'),
+  PayrollController.markEmployeePaid
+);
+
 export const PayrollRoutes = router;
